@@ -1,9 +1,11 @@
 package com.msdp.controller;
 
 
-import org.springframework.web.bind.annotation.RequestMapping;
+import com.msdp.dto.Result;
+import com.msdp.service.IFollowService;
+import org.springframework.web.bind.annotation.*;
 
-import org.springframework.web.bind.annotation.RestController;
+import javax.annotation.Resource;
 
 /**
  * <p>
@@ -11,10 +13,29 @@ import org.springframework.web.bind.annotation.RestController;
  * </p>
  *
  * @author Eason
- * @since 2023-03-19
+ * @since 2023-05-09
  */
 @RestController
 @RequestMapping("/follow")
 public class FollowController {
+
+    @Resource
+    private IFollowService followService;
+
+    @PutMapping("/{id}/{isFollow}")
+    public Result follow(@PathVariable("id") Long followUserId, @PathVariable("isFollow") Boolean isFollow){
+        return followService.follow(followUserId, isFollow);
+    }
+
+    @GetMapping("/or/not/{id}")
+    public Result isFollow(@PathVariable("id") Long followUserId){
+        return followService.isFollow(followUserId);
+    }
+
+    @GetMapping("/common/{id}")
+    public Result followCommons(@PathVariable("id") Long id){
+        return followService.followCommons(id);
+    }
+
 
 }

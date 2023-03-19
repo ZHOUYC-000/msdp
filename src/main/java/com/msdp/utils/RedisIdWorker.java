@@ -27,7 +27,7 @@ public class RedisIdWorker {
         String format = now.format(DateTimeFormatter.ofPattern("yyyy:MM:dd"));
         long count = template.opsForValue().increment("icr:" + keyPrefix + ":" + format);
 
-        return second << COUNT_BITS | count;
+        return timestamp << COUNT_BITS | count;
     }
 
     public static void main(String[] args) {

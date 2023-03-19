@@ -40,6 +40,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     @Resource
     private ISeckillVoucherService seckillVoucherService;
 
+    /**
+     * 全局ID生成器
+     */
     @Resource
     private RedisIdWorker idWorker;
 
@@ -49,23 +52,32 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     @Resource
     private RedissonClient redissonClient;
 
-    private BlockingQueue<VoucherOrder> orderTasks = new ArrayBlockingQueue<>(1024 * 1024);
+    // private BlockingQueue<VoucherOrder> orderTasks = new ArrayBlockingQueue<>(1024 * 1024);
 
+    /**
+     * Lua脚本，解决秒杀
+     */
     private static final DefaultRedisScript<Long> SECKILL_SCRIPT;
     static {
+        // 静态代码块，初始化
         SECKILL_SCRIPT= new DefaultRedisScript<>();
         SECKILL_SCRIPT.setLocation(new ClassPathResource("seckill.lua"));
         SECKILL_SCRIPT.setResultType(Long.class);
     }
 
+    /**
+     * 单工作线程的线程池
+     */
     private static final ExecutorService SECKILL_ORDER_EXECUTOR = Executors.newSingleThreadExecutor();
 
     @PostConstruct
     private void init(){
+        // 后台开启一个工作线程，不停从消息队列中获取消息，下单
         SECKILL_ORDER_EXECUTOR.submit(new VoucherOrderHandler());
     }
 
     private class VoucherOrderHandler implements Runnable {
+        // 消息队列名称
         String queueName = "stream.orders";
 
         @Override
@@ -99,6 +111,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             }
         }
 
+        /**
+         * 处理所有未确认的消息
+         */
         private void handlePendingList() {
             while (true) {
                 try {
@@ -128,7 +143,10 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     }
 
 
-
+    /**
+     * 利用Redisson实现分布式锁
+     * @param voucherOrder
+     */
     private void handleVoucherOrder(VoucherOrder voucherOrder){
         Long id = voucherOrder.getUserId();
         // 创建锁对象
@@ -138,6 +156,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         // 默认30秒
         boolean isLock = lock.tryLock();
         if(!isLock){
+            // 获取锁失败直接返回
             return;
         }
         try {
@@ -147,6 +166,13 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         }
     }
 
+    /**
+     * 使用lua脚本执行秒杀业务，成功下单后将消息存入消息队列中，由耗时的下单操作由后台线程完成
+     * 超卖问题，在Redis中缓存库存大小
+     * 一人一单问题，利用set集合存储已下单用户，下单前判断用户是否已经下过单
+     * @param voucherId
+     * @return
+     */
     @Override
     public Result seckillVoucher(Long voucherId) {
         Long id = UserHolder.getUser().getId();

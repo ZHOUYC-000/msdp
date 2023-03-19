@@ -13,13 +13,18 @@ import com.msdp.service.IUserService;
 import com.msdp.utils.RedisConstants;
 import com.msdp.utils.RegexUtils;
 import com.msdp.utils.SystemConstants;
+import com.msdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+import org.springframework.data.redis.connection.BitFieldSubCommands;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpSession;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -97,6 +102,62 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         template.opsForValue().set(RedisConstants.LOGIN_USER_KEY + token ,userJson, RedisConstants.LOGIN_USER_TTL, TimeUnit.MINUTES);
         template.delete(RedisConstants.LOGIN_CODE_KEY + phone);
         return Result.ok(token);
+    }
+
+    @Override
+    public Result sign() {
+        // 获取登录用户
+        UserDTO user = UserHolder.getUser();
+        Long userId = user.getId();
+        // 获取日期
+        LocalDateTime now = LocalDateTime.now();
+        // 拼接key
+        String keySuffix = now.format(DateTimeFormatter.ofPattern(":yyyyMM"));
+        String key = RedisConstants.USER_SIGN_KEY + keySuffix;
+        // 获取今天是本月的第几天
+        int day = now.getDayOfMonth() - 1;
+        // 写入Redis
+        template.opsForValue().setBit(key, day, true);
+        return Result.ok();
+    }
+
+    @Override
+    public Result signCount() {
+        // 获取登录用户
+        UserDTO user = UserHolder.getUser();
+        Long userId = user.getId();
+        // 获取日期
+        LocalDateTime now = LocalDateTime.now();
+        // 获取今天是本月的第几天
+        int day = now.getDayOfMonth();
+        // 拼接key
+        String keySuffix = now.format(DateTimeFormatter.ofPattern(":yyyyMM"));
+        String key = RedisConstants.USER_SIGN_KEY + keySuffix;
+
+        // 拿到本月数据
+        List<Long> list = template.opsForValue().bitField(
+                key,
+                BitFieldSubCommands.create().get(
+                        BitFieldSubCommands.BitFieldType.unsigned(day)).valueAt(0)
+        );
+        if(list == null || list.isEmpty()){
+            return Result.ok(0);
+        }
+        Long num = list.get(0);
+        if(num == null || num == 0){
+            return Result.ok(0);
+        }
+        // 计算
+        int count = 0;
+        while (true){
+            if ((num & 1) == 0){
+                break;
+            }else{
+                count ++;
+            }
+            num >>>= 1;
+        }
+        return Result.ok(count);
     }
 
     private User createUserWithPhone(String phone) {
